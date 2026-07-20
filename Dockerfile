@@ -86,7 +86,7 @@ COPY --from=builder /workspace/demo/dist/server-bundle.js.map ./demo/dist/server
 COPY --from=builder /workspace/demo/start.js ./demo/start.js
 
 # Copy the demo client bundle (served statically)
-COPY --from=builder /workspace/demo/dist/client-bundle.js ./demo/dist/client-bundle.js
+COPY --from=builder /workspace/demo/dist/client-bundle.*.js ./demo/dist/
 
 # Copy static assets served by the demo server
 COPY --from=builder /workspace/css/xterm.css ./css/xterm.css

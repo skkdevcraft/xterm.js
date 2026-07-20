@@ -99,6 +99,7 @@ export class MouseService implements IMouseService {
     register(Gesture.addTarget(target.screenElement));
     register(addDisposableListener(target.screenElement, GestureEventType.START, () => this._handleTouchStart()));
     register(addDisposableListener(target.screenElement, GestureEventType.CHANGE, (e: IGestureEvent) => this._handleTouchChange(ctx, e)));
+    register(addDisposableListener(target.screenElement, GestureEventType.TAP, () => ctx.focus()));
   }
 
   private _sendEvent(ctx: IMouseBindContext, ev: MouseEvent | WheelEvent): boolean {

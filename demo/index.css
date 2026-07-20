@@ -86,9 +86,39 @@ pre {
     width: 100%;
     min-width: 100px;
 }
-div:first-of-type.grid {
-    flex: 2;
+#main-panel {
+    flex: 3;
     height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+#terminal-container {
+    flex: 1;
+    min-height: 0;
+}
+#diagnostics {
+    height: 120px;
+    min-height: 40px;
+    background: #1a1a1a;
+    color: #aaa;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 8px 12px;
+    overflow-y: auto;
+    border-top: 1px solid #333;
+    resize: vertical;
+}
+#diagnostics .entry {
+    padding: 2px 0;
+    border-bottom: 1px solid #222;
+}
+#diagnostics .entry:last-child {
+    border-bottom: none;
+}
+#diagnostics .time {
+    color: #5DA5D5;
+    margin-right: 8px;
 }
 
 /* Sidebar */

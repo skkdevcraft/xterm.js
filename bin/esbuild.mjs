@@ -7,6 +7,8 @@
 
 import { build, context, default as esbuild } from 'esbuild';
 import { argv } from 'process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const config = {
   isProd: argv.includes('--prod'),
@@ -125,11 +127,24 @@ if (config.addon) {
     bundleConfig.tsconfig = 'addons/addon-serialize/src/tsconfig.json'
   }
 } else if (config.isDemoClient) {
+  const timestamp = new Date().toISOString().replace(/[T:.]/g, '-').slice(0, 22);
+  const outFile = `demo/dist/client-bundle.${timestamp}.js`;
+  const distDir = 'demo/dist';
+
+  // Clean up old timestamped bundles
+  if (fs.existsSync(distDir)) {
+    for (const file of fs.readdirSync(distDir)) {
+      if (file.startsWith('client-bundle.') && file.endsWith('.js')) {
+        fs.unlinkSync(path.join(distDir, file));
+      }
+    }
+  }
+
   bundleConfig = {
     ...bundleConfig,
     sourcemap: false,
     entryPoints: [`demo/client/client.ts`],
-    outfile: 'demo/dist/client-bundle.js',
+    outfile: outFile,
     external: ['util', 'os', 'fs', 'path', 'stream', 'Terminal'],
     alias: {
       // Library ESM imports
@@ -153,7 +168,24 @@ if (config.addon) {
       //       supported` exception to be thrown. So the unbundled out-esbuild sources are used
       //       instead of the .mjs file which seems to resolve the issue.
       "@xterm/addon-ligatures": "./addons/addon-ligatures/out-esbuild/LigaturesAddon",
-    }
+    },
+    plugins: [{
+      name: 'cache-bust',
+      setup(build) {
+        build.onEnd(() => {
+          const indexPath = 'demo/index.html';
+          const html = fs.readFileSync(indexPath, 'utf8');
+          const updated = html.replace(
+            /src="dist\/client-bundle[^"]*\.js"/,
+            `src="dist/client-bundle.${timestamp}.js"`
+          );
+          if (updated !== html) {
+            fs.writeFileSync(indexPath, updated);
+            console.log(`[cache-bust] Updated index.html → client-bundle.${timestamp}.js`);
+          }
+        });
+      }
+    }]
   }
   skipOut = true;
   skipOutTest = true;

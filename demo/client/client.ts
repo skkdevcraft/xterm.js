@@ -300,7 +300,9 @@ function createTerminal(): Terminal {
   addons.search.instance = new SearchAddon();
   addons.serialize.instance = new SerializeAddon();
   addons.fit.instance = new FitAddon();
-  addons.image.instance = new ImageAddon!();
+  if (ImageAddon) {
+    addons.image.instance = new ImageAddon();
+  }
   addons.progress.instance = new ProgressAddon();
   addons.unicodeGraphemes.instance = new UnicodeGraphemesAddon();
   addons.clipboard.instance = new ClipboardAddon();
@@ -312,7 +314,9 @@ function createTerminal(): Terminal {
   addons.webLinks.instance = new WebLinksAddon();
   addons.webFonts.instance = new WebFontsAddon();
   typedTerm.loadAddon(addons.fit.instance);
-  typedTerm.loadAddon(addons.image.instance);
+  if (addons.image.instance) {
+    typedTerm.loadAddon(addons.image.instance);
+  }
   typedTerm.loadAddon(addons.progress.instance);
   typedTerm.loadAddon(addons.search.instance);
   typedTerm.loadAddon(addons.serialize.instance);
@@ -356,6 +360,37 @@ function createTerminal(): Terminal {
 
   term.focus();
   updateTerminalContainerBackground();
+
+  // Diagnostic logging: record tap/focus events on the terminal
+  const diagnostics = document.getElementById('diagnostics')!;
+  function logDiagnostic(msg: string): void {
+    const now = new Date();
+    const time = now.toLocaleTimeString('en-US', { hour12: false }) + '.' + now.getMilliseconds().toString().padStart(3, '0');
+    const entry = document.createElement('div');
+    entry.className = 'entry';
+    entry.innerHTML = `<span class="time">${time}</span>${msg}`;
+    diagnostics.insertBefore(entry, diagnostics.firstChild);
+    // Keep max 50 entries
+    while (diagnostics.children.length > 50) {
+      diagnostics.removeChild(diagnostics.lastChild!);
+    }
+  }
+  logDiagnostic('Terminal created, focus() called');
+
+  // Listen for mouse/touch taps on the terminal element
+  typedTerm.element!.addEventListener('mousedown', () => {
+    logDiagnostic('mousedown on terminal → focus()');
+  });
+  typedTerm.element!.addEventListener('touchstart', () => {
+    logDiagnostic('touchstart on terminal');
+  }, { passive: true });
+  // Track textarea focus/blur via DOM focusin/focusout on the terminal element
+  typedTerm.element!.addEventListener('focusin', () => {
+    logDiagnostic('focusin (textarea focused)');
+  });
+  typedTerm.element!.addEventListener('focusout', () => {
+    logDiagnostic('focusout (textarea blurred)');
+  });
 
   const resizeObserver = new ResizeObserver(entries => {
     if (optionsWindow.autoResize) {

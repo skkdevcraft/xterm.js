@@ -16,6 +16,10 @@
       <span class="banner-title">xterm.js</span>
       <div class="banner-tabs"></div>
     </div>
+    <div>
+      <textarea id="testtextarea">Hello</textarea>
+      <textarea id="logoutput"></textarea>
+    </div>
     <div id="container">
       <div class="grid" id="main-panel">
         <div id="terminal-container"></div>
@@ -24,6 +28,45 @@
       <div id="sidebar" class="grid">
       </div>
     </div>
+    <script>
+      (function() {
+        const source = document.getElementById('testtextarea');
+        const log = document.getElementById('logoutput');
+        if (!source || !log) return;
+
+        function appendLog(eventType, detail) {
+          const now = new Date().toISOString();
+          let line = '[' + now + '] ' + eventType;
+          if (detail !== undefined) {
+            line += ' | ' + detail;
+          }
+          log.value += line + '\n';
+          log.scrollTop = log.scrollHeight;
+        }
+
+        source.addEventListener('compositionstart', function(e) {
+          appendLog('compositionstart', 'data="' + e.data + '"');
+        });
+        source.addEventListener('compositionupdate', function(e) {
+          appendLog('compositionupdate', 'data="' + e.data + '"');
+        });
+        source.addEventListener('compositionend', function(e) {
+          appendLog('compositionend', 'data="' + e.data + '"');
+        });
+        source.addEventListener('input', function(e) {
+          appendLog('input', 'value="' + source.value + '"');
+        });
+        source.addEventListener('change', function(e) {
+          appendLog('change', 'value="' + source.value + '"');
+        });
+        source.addEventListener('focus', function(e) {
+          appendLog('focus');
+        });
+        source.addEventListener('blur', function(e) {
+          appendLog('blur');
+        });
+      })();
+    </script>
       <script src="dist/client-bundle.2026-07-20-07-31-52-17.js" defer ></script>
     </body>
 </html>

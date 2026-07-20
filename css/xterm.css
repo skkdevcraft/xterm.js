@@ -58,6 +58,24 @@
     z-index: 5;
 }
 
+.xterm .xterm-helper-textarea2 {
+    padding: 0;
+    border: 0;
+    margin: 0;
+    /* Move textarea out of the screen to the far left, so that the cursor is not visible */
+    position: absolute;
+    /* opacity: 0; */
+    /* left: -9999em; */
+    top: 0;
+    width: 100;
+    height: 20;
+    z-index: -5;
+    /** Prevent wrapping so the IME appears against the textarea at the correct position */
+    white-space: nowrap;
+    overflow: hidden;
+    resize: none;
+}
+
 .xterm .xterm-helper-textarea {
     padding: 0;
     border: 0;

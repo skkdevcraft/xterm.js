@@ -46,7 +46,7 @@ body {
 p {
     font-size: 0.9em;
     font-style: italic
-    
+
 }
 dl:first-child,
 p:first-child {
@@ -98,7 +98,7 @@ pre {
     min-height: 0;
 }
 #diagnostics {
-    height: 120px;
+    height: 420px;
     min-height: 40px;
     background: #1a1a1a;
     color: #aaa;

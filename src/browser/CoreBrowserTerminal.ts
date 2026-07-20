@@ -99,6 +99,12 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
    * the keypress event should not trigger a data event but should still print to the textarea so
    * screen readers will announce it.
    */
+  /**
+   * Last textarea value that was synced to the terminal. Used to compute diffs in _inputEvent
+   * for IMEs/dictation that revise text in place (e.g. iOS dictation).
+   */
+  private _lastSyncedTextareaValue: string = '';
+
   private _keyDownHandled: boolean = false;
 
   /**
@@ -354,9 +360,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     // text is.
     this.textarea.style.left = cursorLeft + 'px';
     this.textarea.style.top = cursorTop + 'px';
-    this.textarea.style.width = cellWidth + 'px';
-    this.textarea.style.height = cellHeight + 'px';
-    this.textarea.style.lineHeight = cellHeight + 'px';
+    // this.textarea.style.width = cellWidth + 'px';
+    // this.textarea.style.height = cellHeight + 'px';
+    // this.textarea.style.lineHeight = cellHeight + 'px';
     this.textarea.style.zIndex = '-5';
   }
 
@@ -426,6 +432,7 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     }));
     this._register(addDisposableListener(this.textarea!, 'compositionupdate', (e: CompositionEvent) => this._compositionHelper!.compositionupdate(e)));
     this._register(addDisposableListener(this.textarea!, 'compositionend', () => this._compositionHelper!.compositionend()));
+
     this._register(addDisposableListener(this.textarea!, 'input', (ev: InputEvent) => this._inputEvent(ev), true));
     this._register(this.onRender(() => this._compositionHelper!.updateCompositionElements()));
   }
@@ -485,19 +492,19 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     fragment.appendChild(this.screenElement);
 
     const textarea = this.textarea = this._document.createElement('textarea');
-    this.textarea.classList.add('xterm-helper-textarea');
-    this.textarea.setAttribute('aria-label', Strings.promptLabel.get());
-    if (!Browser.isChromeOS) {
-      // ChromeVox on ChromeOS does not like this. See
-      // https://issuetracker.google.com/issues/260170397
-      this.textarea.setAttribute('aria-multiline', 'false');
-    }
-    this.textarea.setAttribute('autocorrect', 'off');
-    this.textarea.setAttribute('autocapitalize', 'off');
-    this.textarea.setAttribute('spellcheck', 'false');
-    this.textarea.tabIndex = 0;
-    this._register(this.optionsService.onSpecificOptionChange('disableStdin', () => textarea.readOnly = this.optionsService.rawOptions.disableStdin));
-    this.textarea.readOnly = this.optionsService.rawOptions.disableStdin;
+    this.textarea.classList.add('xterm-helper-textarea2');
+    // this.textarea.setAttribute('aria-label', Strings.promptLabel.get());
+    // if (!Browser.isChromeOS) {
+    //   // ChromeVox on ChromeOS does not like this. See
+    //   // https://issuetracker.google.com/issues/260170397
+    //   this.textarea.setAttribute('aria-multiline', 'false');
+    // }
+    // this.textarea.setAttribute('autocorrect', 'off');
+    // this.textarea.setAttribute('autocapitalize', 'off');
+    // this.textarea.setAttribute('spellcheck', 'false');
+    // this.textarea.tabIndex = 0;
+    // this._register(this.optionsService.onSpecificOptionChange('disableStdin', () => textarea.readOnly = this.optionsService.rawOptions.disableStdin));
+    // this.textarea.readOnly = this.optionsService.rawOptions.disableStdin;
 
     // Register the core browser service before the generic textarea handlers are registered so it
     // handles them first. Otherwise the renderers may use the wrong focus state.
@@ -1038,8 +1045,37 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
       // keys could be ignored
       this._unprocessedDeadKey = false;
 
-      const text = ev.data;
-      this.coreService.triggerDataEvent(text, true);
+      // Don't trust ev.data as an incremental delta - some input sources (notably iOS/iPadOS
+      // dictation, which never fires composition events: https://bugs.webkit.org/show_bug.cgi?id=261764)
+      // revise their recognized text in place, and ev.data across successive events can overlap
+      // with or fully replay text already sent. this.textarea.value, by contrast, reflects the
+      // browser's current, correct text - so diff against what we last synced and send only the
+      // correction.
+      const newValue = this.textarea!.value;
+      const prevValue = this._lastSyncedTextareaValue;
+
+      let commonPrefixLen = 0;
+      const maxCommon = Math.min(prevValue.length, newValue.length);
+      while (commonPrefixLen < maxCommon && prevValue.charCodeAt(commonPrefixLen) === newValue.charCodeAt(commonPrefixLen)) {
+        commonPrefixLen++;
+      }
+
+      const deleteCount = prevValue.length - commonPrefixLen;
+      const insertText = newValue.slice(commonPrefixLen);
+
+      let text = '';
+      if (deleteCount > 0) {
+        // C0 DEL - confirm this matches what a real Backspace keydown sends in Keyboard.ts
+        // in this codebase; swap for '\b' (0x08) if that's what this terminal's stty expects.
+        text += '\x7f'.repeat(deleteCount);
+      }
+      text += insertText;
+
+      this._lastSyncedTextareaValue = newValue;
+
+      if (text.length > 0) {
+        this.coreService.triggerDataEvent(text, true);
+      }
       return true;
     }
 

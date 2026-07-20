@@ -13,7 +13,7 @@ if ('WebAssembly' in window) {
   ImageAddon = imageAddon.ImageAddon;
 }
 
-import { Terminal, ITerminalOptions, type ITheme } from '@xterm/xterm';
+import { Terminal, ITerminalOptions, IEvent, type ITheme } from '@xterm/xterm';
 import { AttachAddon } from '@xterm/addon-attach';
 import { AddonImageWindow } from './components/window/addonImageWindow';
 import { AddonLigaturesWindow } from './components/window/addonLigaturesWindow';
@@ -376,6 +376,7 @@ function createTerminal(): Terminal {
     }
   }
   logDiagnostic('Terminal created, focus() called');
+  logDiagnostic('v4');
 
   // Listen for mouse/touch taps on the terminal element
   typedTerm.element!.addEventListener('mousedown', () => {
@@ -384,6 +385,9 @@ function createTerminal(): Terminal {
   typedTerm.element!.addEventListener('touchstart', () => {
     logDiagnostic('touchstart on terminal');
   }, { passive: true });
+  typedTerm.element!.addEventListener('touchend', () => {
+    logDiagnostic('touchend on terminal');
+  }, { passive: true });
   // Track textarea focus/blur via DOM focusin/focusout on the terminal element
   typedTerm.element!.addEventListener('focusin', () => {
     logDiagnostic('focusin (textarea focused)');
@@ -391,6 +395,27 @@ function createTerminal(): Terminal {
   typedTerm.element!.addEventListener('focusout', () => {
     logDiagnostic('focusout (textarea blurred)');
   });
+
+  // Diagnostic logging: composition + dictation events on the textarea
+  const textarea = typedTerm.element!.querySelector('textarea');
+  if (textarea) {
+    textarea.addEventListener('compositionstart', (ev: CompositionEvent) => {
+      logDiagnostic(`compositionstart (dictation start?) data=${JSON.stringify(ev.data)}`);
+    });
+    textarea.addEventListener('compositionupdate', (ev: CompositionEvent) => {
+      logDiagnostic(`compositionupdate data=${JSON.stringify(ev.data)}`);
+    });
+    textarea.addEventListener('compositionend', (ev: CompositionEvent) => {
+      logDiagnostic(`compositionend (dictation end?) data=${JSON.stringify(ev.data)}`);
+    });
+    // textarea.addEventListener('input', (ev: InputEvent) => {
+    //   logDiagnostic(`input (inputType: ${ev.inputType}) (isComposing: ${ev.isComposing}) (range: ${JSON.stringify(ev.getTargetRanges())}) data=${JSON.stringify(ev.data)}`);
+    // });
+    // Also log textInput event (Safari-specific, fires for dictation on iPad)
+    textarea.addEventListener('textInput', ((ev: InputEvent) => {
+      logDiagnostic(`textInput ev=${JSON.stringify(ev)}`);
+    }) as EventListener);
+  }
 
   const resizeObserver = new ResizeObserver(entries => {
     if (optionsWindow.autoResize) {

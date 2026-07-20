@@ -1,10 +1,16 @@
 services:
-  xtermjs-demo:
+  cloudflaretunnel-demo:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    environment:
+      - TUNNEL_TOKEN=$TUNNEL_TOKEN
+    command: tunnel --no-autoupdate run
+
+  app:
     build:
       context: .
       dockerfile: Dockerfile
     image: xtermjs-demo:latest
-    container_name: xtermjs-demo
     ports:
       - "3000:3000"
     environment:

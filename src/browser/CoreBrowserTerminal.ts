@@ -360,9 +360,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     // text is.
     this.textarea.style.left = cursorLeft + 'px';
     this.textarea.style.top = cursorTop + 'px';
-    // this.textarea.style.width = cellWidth + 'px';
-    // this.textarea.style.height = cellHeight + 'px';
-    // this.textarea.style.lineHeight = cellHeight + 'px';
+    this.textarea.style.width = cellWidth + 'px';
+    this.textarea.style.height = cellHeight + 'px';
+    this.textarea.style.lineHeight = cellHeight + 'px';
     this.textarea.style.zIndex = '-5';
   }
 
@@ -431,7 +431,10 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
       this._compositionHelper!.updateCompositionElements();
     }));
     this._register(addDisposableListener(this.textarea!, 'compositionupdate', (e: CompositionEvent) => this._compositionHelper!.compositionupdate(e)));
-    this._register(addDisposableListener(this.textarea!, 'compositionend', () => this._compositionHelper!.compositionend()));
+    this._register(addDisposableListener(this.textarea!, 'compositionend', () => {
+      this._compositionHelper!.compositionend();
+      this._lastSyncedTextareaValue = this.textarea!.value;
+    }));
 
     this._register(addDisposableListener(this.textarea!, 'input', (ev: InputEvent) => this._inputEvent(ev), true));
     this._register(this.onRender(() => this._compositionHelper!.updateCompositionElements()));
@@ -492,19 +495,19 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     fragment.appendChild(this.screenElement);
 
     const textarea = this.textarea = this._document.createElement('textarea');
-    this.textarea.classList.add('xterm-helper-textarea2');
-    // this.textarea.setAttribute('aria-label', Strings.promptLabel.get());
-    // if (!Browser.isChromeOS) {
-    //   // ChromeVox on ChromeOS does not like this. See
-    //   // https://issuetracker.google.com/issues/260170397
-    //   this.textarea.setAttribute('aria-multiline', 'false');
-    // }
-    // this.textarea.setAttribute('autocorrect', 'off');
-    // this.textarea.setAttribute('autocapitalize', 'off');
-    // this.textarea.setAttribute('spellcheck', 'false');
-    // this.textarea.tabIndex = 0;
-    // this._register(this.optionsService.onSpecificOptionChange('disableStdin', () => textarea.readOnly = this.optionsService.rawOptions.disableStdin));
-    // this.textarea.readOnly = this.optionsService.rawOptions.disableStdin;
+    this.textarea.classList.add('xterm-helper-textarea');
+    this.textarea.setAttribute('aria-label', Strings.promptLabel.get());
+    if (!Browser.isChromeOS) {
+      // ChromeVox on ChromeOS does not like this. See
+      // https://issuetracker.google.com/issues/260170397
+      this.textarea.setAttribute('aria-multiline', 'false');
+    }
+    this.textarea.setAttribute('autocorrect', 'off');
+    this.textarea.setAttribute('autocapitalize', 'off');
+    this.textarea.setAttribute('spellcheck', 'false');
+    this.textarea.tabIndex = 0;
+    this._register(this.optionsService.onSpecificOptionChange('disableStdin', () => textarea.readOnly = this.optionsService.rawOptions.disableStdin));
+    this.textarea.readOnly = this.optionsService.rawOptions.disableStdin;
 
     // Register the core browser service before the generic textarea handlers are registered so it
     // handles them first. Otherwise the renderers may use the wrong focus state.
@@ -920,6 +923,7 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     // most scenarios.
     if (result.key === C0.ETX || result.key === C0.CR) {
       this.textarea!.value = '';
+      this._lastSyncedTextareaValue = '';
     }
 
     const wasModifierOnly = this._keyboardService.useWin32InputMode && wasModifierKeyOnlyEvent(event);
@@ -1045,71 +1049,7 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
       // keys could be ignored
       this._unprocessedDeadKey = false;
 
-      // Don't trust ev.data as an incremental delta - some input sources (notably iOS/iPadOS
-      // dictation, which never fires composition events: https://bugs.webkit.org/show_bug.cgi?id=261764)
-      // revise their recognized text in place, and ev.data across successive events can overlap
-      // with or fully replay text already sent. Instead, read the current buffer line content
-      // and compare it to the textarea value. When they differ, reset the cursor to the
-      // beginning of the line, clear the entire line (CSI 2 K), and re-write the new value.
-      // This approach is significantly more robust than sending individual DEL (\x7f)
-      // characters to erase the previous revision — it avoids issues with differing
-      // interpretations of backspace/del between the terminal and the host and handles
-      // arbitrary in-place text revisions in a single shot.
-      const newValue = this.textarea!.value;
-      const prevValue = this._lastSyncedTextareaValue;
-
-      let text = '';
-      if (newValue !== prevValue) {
-        // Read what's currently on the cursor's buffer line to confirm the old content.
-        // translateToString(true) trims trailing blank cells so we get the actual text.
-        const cursorY = this.buffer.ybase + this.buffer.y;
-        const bufferLine = this.buffer.lines.get(cursorY);
-        const lineContent = bufferLine
-          ? bufferLine.translateToString(true, 0, this.buffer.x).trimEnd()
-          : undefined;
-
-        if (bufferLine && lineContent === prevValue) {
-          // Preferred path: buffer content matches our expectation, so we can reset and
-          // rewrite the line in one shot using carriage return + erase-in-line.
-          // CR moves the cursor to column 0. CSI 2 K (Erase in Line, param=2) clears the
-          // entire row, making this far more robust for IME/dictation revisions than sending
-          // individual DEL (\x7f) characters, which can conflict with the host's interpretation
-          // of the backspace/del control characters.
-          text = `${C0.CR}\x1b[2K${newValue}`;
-        } else if (bufferLine && lineContent !== prevValue) {
-          // Buffer mismatch — something else modified the line (e.g., the host echoed text).
-          // Send \x7f DELs for the expected "delete" portion to let the host application
-          // reconcile the difference, then append the insert portion.
-          let commonPrefixLen = 0;
-          const maxCommon = Math.min(prevValue.length, newValue.length);
-          while (commonPrefixLen < maxCommon && prevValue.charCodeAt(commonPrefixLen) === newValue.charCodeAt(commonPrefixLen)) {
-            commonPrefixLen++;
-          }
-          const deleteCount = prevValue.length - commonPrefixLen;
-          const insertText = newValue.slice(commonPrefixLen);
-          if (deleteCount > 0) {
-            text += '\x7f'.repeat(deleteCount);
-          }
-          text += insertText;
-        } else {
-          // No buffer line available (unlikely — the terminal should always have a buffer).
-          // Fall back to the same DEL-based diff as above.
-          let commonPrefixLen = 0;
-          const maxCommon = Math.min(prevValue.length, newValue.length);
-          while (commonPrefixLen < maxCommon && prevValue.charCodeAt(commonPrefixLen) === newValue.charCodeAt(commonPrefixLen)) {
-            commonPrefixLen++;
-          }
-          const deleteCount = prevValue.length - commonPrefixLen;
-          const insertText = newValue.slice(commonPrefixLen);
-          if (deleteCount > 0) {
-            text += '\x7f'.repeat(deleteCount);
-          }
-          text += insertText;
-        }
-
-        this._lastSyncedTextareaValue = newValue;
-      }
-
+      const text = this._computeTextareaInput(this.textarea!.value);
       if (text.length > 0) {
         this.coreService.triggerDataEvent(text, true);
       }
@@ -1117,6 +1057,71 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     }
 
     return false;
+  }
+
+  /**
+   * Computes the terminal data to send when the textarea value changes from an input event.
+   *
+   * Some input sources (notably iOS/iPadOS dictation, which never fires composition events:
+   * https://bugs.webkit.org/show_bug.cgi?id=261764) revise their recognized text in place, and
+   * `ev.data` across successive events can overlap with or fully replay text already sent.
+   * `this.textarea.value`, by contrast, reflects the browser's current, correct text.
+   *
+   * This method compares the new textarea value against the buffer content on the cursor's row.
+   * When the buffer matches expectations it sends a single CR + erase-in-line (CSI 2 K) followed
+   * by the new value, which is far more robust than sending individual DEL (\x7f) characters.
+   * If the buffer doesn't match it falls back to a character-level diff with individual DELs.
+   *
+   * @param newValue The current textarea value.
+   * @returns The terminal data string to send (empty if no change).
+   */
+  private _computeTextareaInput(newValue: string): string {
+    const prevValue = this._lastSyncedTextareaValue;
+    if (newValue === prevValue) {
+      return '';
+    }
+
+    // Read what's currently on the cursor's buffer line to verify the old content.
+    const cursorY = this.buffer.ybase + this.buffer.y;
+    const bufferLine = this.buffer.lines.get(cursorY);
+    const lineContent = bufferLine
+      ? bufferLine.translateToString(true, 0, this.buffer.x).trimEnd()
+      : undefined;
+
+    if (bufferLine && lineContent === prevValue) {
+      // Preferred path: buffer content matches — reset and rewrite the line in one shot.
+      // CR moves the cursor to column 0. CSI 2 K (Erase in Line, param=2) clears the
+      // entire row, avoiding conflicts with the host's interpretation of backspace/del.
+      this._lastSyncedTextareaValue = newValue;
+      return `${C0.CR}\x1b[2K${newValue}`;
+    }
+
+    // Fallback: buffer mismatch or unavailable — use a character-level diff with DELs.
+    return this._computeTextareaDiff(prevValue, newValue);
+  }
+
+  /**
+   * Computes a character-level diff between the previous and new textarea values,
+   * producing DEL (\x7f) characters for removed content followed by the inserted text.
+   */
+  private _computeTextareaDiff(prevValue: string, newValue: string): string {
+    let commonPrefixLen = 0;
+    const maxCommon = Math.min(prevValue.length, newValue.length);
+    while (commonPrefixLen < maxCommon && prevValue.charCodeAt(commonPrefixLen) === newValue.charCodeAt(commonPrefixLen)) {
+      commonPrefixLen++;
+    }
+
+    const deleteCount = prevValue.length - commonPrefixLen;
+    const insertText = newValue.slice(commonPrefixLen);
+
+    let text = '';
+    if (deleteCount > 0) {
+      text += '\x7f'.repeat(deleteCount);
+    }
+    text += insertText;
+
+    this._lastSyncedTextareaValue = newValue;
+    return text;
   }
 
   /**

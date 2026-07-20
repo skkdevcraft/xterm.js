@@ -1048,30 +1048,67 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
       // Don't trust ev.data as an incremental delta - some input sources (notably iOS/iPadOS
       // dictation, which never fires composition events: https://bugs.webkit.org/show_bug.cgi?id=261764)
       // revise their recognized text in place, and ev.data across successive events can overlap
-      // with or fully replay text already sent. this.textarea.value, by contrast, reflects the
-      // browser's current, correct text - so diff against what we last synced and send only the
-      // correction.
+      // with or fully replay text already sent. Instead, read the current buffer line content
+      // and compare it to the textarea value. When they differ, reset the cursor to the
+      // beginning of the line, clear the entire line (CSI 2 K), and re-write the new value.
+      // This approach is significantly more robust than sending individual DEL (\x7f)
+      // characters to erase the previous revision — it avoids issues with differing
+      // interpretations of backspace/del between the terminal and the host and handles
+      // arbitrary in-place text revisions in a single shot.
       const newValue = this.textarea!.value;
       const prevValue = this._lastSyncedTextareaValue;
 
-      let commonPrefixLen = 0;
-      const maxCommon = Math.min(prevValue.length, newValue.length);
-      while (commonPrefixLen < maxCommon && prevValue.charCodeAt(commonPrefixLen) === newValue.charCodeAt(commonPrefixLen)) {
-        commonPrefixLen++;
-      }
-
-      const deleteCount = prevValue.length - commonPrefixLen;
-      const insertText = newValue.slice(commonPrefixLen);
-
       let text = '';
-      if (deleteCount > 0) {
-        // C0 DEL - confirm this matches what a real Backspace keydown sends in Keyboard.ts
-        // in this codebase; swap for '\b' (0x08) if that's what this terminal's stty expects.
-        text += '\x7f'.repeat(deleteCount);
-      }
-      text += insertText;
+      if (newValue !== prevValue) {
+        // Read what's currently on the cursor's buffer line to confirm the old content.
+        // translateToString(true) trims trailing blank cells so we get the actual text.
+        const cursorY = this.buffer.ybase + this.buffer.y;
+        const bufferLine = this.buffer.lines.get(cursorY);
+        const lineContent = bufferLine
+          ? bufferLine.translateToString(true, 0, this.buffer.x).trimEnd()
+          : undefined;
 
-      this._lastSyncedTextareaValue = newValue;
+        if (bufferLine && lineContent === prevValue) {
+          // Preferred path: buffer content matches our expectation, so we can reset and
+          // rewrite the line in one shot using carriage return + erase-in-line.
+          // CR moves the cursor to column 0. CSI 2 K (Erase in Line, param=2) clears the
+          // entire row, making this far more robust for IME/dictation revisions than sending
+          // individual DEL (\x7f) characters, which can conflict with the host's interpretation
+          // of the backspace/del control characters.
+          text = `${C0.CR}\x1b[2K${newValue}`;
+        } else if (bufferLine && lineContent !== prevValue) {
+          // Buffer mismatch — something else modified the line (e.g., the host echoed text).
+          // Send \x7f DELs for the expected "delete" portion to let the host application
+          // reconcile the difference, then append the insert portion.
+          let commonPrefixLen = 0;
+          const maxCommon = Math.min(prevValue.length, newValue.length);
+          while (commonPrefixLen < maxCommon && prevValue.charCodeAt(commonPrefixLen) === newValue.charCodeAt(commonPrefixLen)) {
+            commonPrefixLen++;
+          }
+          const deleteCount = prevValue.length - commonPrefixLen;
+          const insertText = newValue.slice(commonPrefixLen);
+          if (deleteCount > 0) {
+            text += '\x7f'.repeat(deleteCount);
+          }
+          text += insertText;
+        } else {
+          // No buffer line available (unlikely — the terminal should always have a buffer).
+          // Fall back to the same DEL-based diff as above.
+          let commonPrefixLen = 0;
+          const maxCommon = Math.min(prevValue.length, newValue.length);
+          while (commonPrefixLen < maxCommon && prevValue.charCodeAt(commonPrefixLen) === newValue.charCodeAt(commonPrefixLen)) {
+            commonPrefixLen++;
+          }
+          const deleteCount = prevValue.length - commonPrefixLen;
+          const insertText = newValue.slice(commonPrefixLen);
+          if (deleteCount > 0) {
+            text += '\x7f'.repeat(deleteCount);
+          }
+          text += insertText;
+        }
+
+        this._lastSyncedTextareaValue = newValue;
+      }
 
       if (text.length > 0) {
         this.coreService.triggerDataEvent(text, true);

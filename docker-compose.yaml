@@ -1,0 +1,13 @@
+services:
+  xtermjs-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: xtermjs-demo:latest
+    container_name: xtermjs-demo
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    stdin_open: true
+    tty: true

@@ -33,7 +33,7 @@
     "presetup": "npm run build",
     "setup": "npm run esbuild",
     "setup-full": "node bin/setup-full.mjs",
-    "postsetup": "npm run esbuild-demo-server",
+    "postsetup": "npm run esbuild-demo-server && npm run esbuild-demo-client",
     "start": "node demo/start",
     "dev": "concurrently -k -p [{name}] -n tsc,esbuild,esbuild-demo-client,esbuild-demo-server,server -c blue,yellow,cyan,green,magenta \"npm:tsc-watch\" \"npm:esbuild-watch\" \"npm:esbuild-demo-client-watch\" \"npm:esbuild-demo-server-watch\" \"npm:start\"",
     "build": "npm run tsc",

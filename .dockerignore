@@ -1,0 +1,16 @@
+.git/
+.gitignore
+.gitattributes
+node_modules/
+lib/
+out/
+out-esbuild/
+out-esbuild-test/
+demo/dist/
+**/lib/**
+**/out/**
+**/*.test.ts
+**/*.benchmark.ts
+.DS_Store
+*.md
+AGENTS.md

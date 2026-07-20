@@ -4,7 +4,9 @@
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
       "version": 22
-    } // yarn
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:4": {},
+    "ghcr.io/devcontainers/features/node:2": {} // yarn
   },
   "forwardPorts": [
     3000
